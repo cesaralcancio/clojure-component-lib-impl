@@ -18,6 +18,7 @@
                                                                    [:request :components]
                                                                    webapp))}))
 
+    ; Add components interceptor to all routes
     (def service-map-doc (-> service-map
                              (http/default-interceptors)
                              (update ::http/interceptors conj components-interceptor)))
