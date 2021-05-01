@@ -1,12 +1,5 @@
 (ns component-study.service
-  (:require [com.stuartsierra.component :as component]
-            [component-study.components.database :as database]
-            [component-study.components.webapp :as scheduler]
-            [clojure.pprint :as pp]
-            [io.pedestal.http :as http]
-            [io.pedestal.http.route :as route]
-            [io.pedestal.test :as test]
-            [io.pedestal.interceptor :as i]))
+  (:require [io.pedestal.http.route :as route]))
 
 (defn response [status body & {:as headers}]
   {:status status :body body :headers (merge {"Content-Type" "application/json"} headers)})
@@ -31,13 +24,12 @@
   {:name  nm
    :items {}})
 
-(defn make-list-item [nm]
-  {:name  nm
-   :done? false})
+(defn make-list-item [list-id item-id nm status]
+  {:list-id list-id
+   :item-id item-id
+   :name    nm
+   :done?   (Boolean/valueOf status)})
 
-;;;
-;;; API Interceptors
-;;;
 (def echo
   {:name :echo
    :enter
@@ -96,16 +88,17 @@
    :enter
          (fn [context]
            (if-let [list-id (get-in context [:request :path-params :list-id])]
-             (let [nm (get-in context [:request :query-params :name] "Unnamed Item")
-                   new-item (make-list-item nm)
-                   item-id (str (gensym "i"))]
+             (let [item-id (str (gensym "i"))
+                   nm (get-in context [:request :query-params :name] "Unnamed Item")
+                   status (get-in context [:request :query-params :status] false)
+                   new-item (make-list-item list-id item-id nm status)]
                (-> context
                    (assoc :tx-data [list-item-add list-id item-id new-item])
                    (assoc-in [:request :path-params :item-id] item-id)))
              context))})
 
 (def version
-  {:name :test-um
+  {:name :version
    :enter
          (fn [context]
            (-> context
@@ -113,7 +106,9 @@
 
 (defn handle-version [request]
   {:status 200
-   :body   (str "Version " (:version request) " admin " (-> request :components :config :admin))})
+   :body   {:version     (str "version-" (:version request))
+            :user        (-> request :components :config :user)
+            :environment (-> request :components :config :env)}})
 
 (def db-interceptor
   {:name :database-interceptor
@@ -130,8 +125,6 @@
                  (assoc-in context [:request :store] @store))
                context)))})
 
-
-
 (def routes
   (route/expand-routes
     #{["/todo" :post [db-interceptor list-create]]
@@ -141,7 +134,8 @@
       ["/todo/:list-id" :get [entity-render db-interceptor list-view]]
 
       ["/todo/:list-id/:item-id" :get [entity-render list-item-view db-interceptor]]
+      ; not implemented yet
       ["/todo/:list-id/:item-id" :put echo :route-name :list-item-update]
       ["/todo/:list-id/:item-id" :delete echo :route-name :list-item-delete]
 
-      ["/version" :get [version handle-version] :route-name :test-tres]}))
+      ["/version" :get [version handle-version] :route-name :handle-version]}))

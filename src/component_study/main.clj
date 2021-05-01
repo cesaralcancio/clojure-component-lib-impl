@@ -7,19 +7,37 @@
 (def result (components/start-dev))
 ; (def result (components/start-prod))
 
+; get server from components
 (def server (-> result :pedestal :server))
 (defn test-request [verb url]
   (io.pedestal.test/response-for (::http/service-fn @server) verb url))
 
-; URI de Teste
+; Validation the version service manually
 (println (test-request :get "/version"))
 
-; Provando os serviços
+; Validating the services manually
 (def todo-cesar (test-request :post "/todo?name=cesar-alcancio-todo-list"))
-(def location-cesar (-> todo-cesar :headers (get "Location")))
+(println todo-cesar)
+(def location-todo-cesar (-> todo-cesar :headers (get "Location")))
+(println location-todo-cesar)
+(println (test-request :get location-todo-cesar))
 
-(println (test-request :get "/todo"))
+(def all-todos (test-request :get "/todo"))
+(println all-todos)
 
-(println (test-request :post (str location-cesar "?name=cesar-item-1")))
-(println (test-request :get location-cesar))
+(def item-1 (test-request :post (str location-todo-cesar "?name=cesar-item-1")))
+(def item-2 (test-request :post (str location-todo-cesar "?name=cesar-item-2&status=true")))
+(def item-3 (test-request :post (str location-todo-cesar "?name=cesar-item-2&status=false")))
+(println item-1)
+(println item-2)
+(println item-3)
 
+(def items (test-request :get location-todo-cesar))
+(println items)
+
+(def get-item (test-request :get (str location-todo-cesar "/i19938")))
+(def put-item (test-request :put (str location-todo-cesar "/i19937")))
+(def delete-item (test-request :delete (str location-todo-cesar "/i19937")))
+(println get-item)
+(println put-item)
+(println delete-item)
