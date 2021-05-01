@@ -1,17 +1,15 @@
 (ns component-study.service
   (:require [com.stuartsierra.component :as component]
             [component-study.components.database :as database]
-            [component-study.components.example-component :as example-component]
-            [component-study.components.scheduler :as scheduler]
+            [component-study.components.webapp :as scheduler]
             [clojure.pprint :as pp]
             [io.pedestal.http :as http]
             [io.pedestal.http.route :as route]
             [io.pedestal.test :as test]
             [io.pedestal.interceptor :as i]))
 
-; Pedestal
 (defn response [status body & {:as headers}]
-  {:status status :body body :headers headers})
+  {:status status :body body :headers (merge {"Content-Type" "application/json"} headers)})
 
 (def ok (partial response 200))
 (def created (partial response 201))
@@ -68,12 +66,15 @@
                :response (created new-list "Location" url)
                :tx-data [assoc db-id new-list])))})
 
+(defn list-todos [request]
+  (ok (-> request :store)))
+
 (def list-view
   {:name :list-view
    :enter
          (fn [context]
            (if-let [db-id (get-in context [:request :path-params :list-id])]
-             (if-let [the-list (find-list-by-id (get-in context [:request :database]) db-id)]
+             (if-let [the-list (find-list-by-id (get-in context [:request :store]) db-id)]
                (assoc context :result the-list)
                context)
              context))})
@@ -84,7 +85,7 @@
          (fn [context]
            (if-let [list-id (get-in context [:request :path-params :list-id])]
              (if-let [item-id (get-in context [:request :path-params :item-id])]
-               (if-let [item (find-list-item-by-ids (get-in context [:request :database]) list-id item-id)]
+               (if-let [item (find-list-item-by-ids (get-in context [:request :store]) list-id item-id)]
                  (assoc context :result item)
                  context)
                context)
@@ -103,54 +104,44 @@
                    (assoc-in [:request :path-params :item-id] item-id)))
              context))})
 
-(def test-um
+(def version
   {:name :test-um
    :enter
          (fn [context]
            (-> context
-               (update :request assoc :database (:database context))
-               (update :request assoc :my-name "Cesar")))})
+               (update :request assoc :version "1.0.0")))})
 
-(def test-dois
-  {:name  :test-dois
-   :enter (fn [context]
-            (println "Running test 2")
-            (println context)
-            (println (-> context :request :my-name))
-            (assoc context :response {:status 200 :body (-> context :request :my-name)}))})
-
-(defn test-tres [request]
-  (println "Running test 3")
-  (println request)
-  (println (-> request :components :app :admin))
-  {:status 200 :body (str "test tres equals 2 but different: " (-> request :my-name) " " (-> request :components :app :admin))})
+(defn handle-version [request]
+  {:status 200
+   :body   (str "Version " (:version request) " admin " (-> request :components :config :admin))})
 
 (def db-interceptor
   {:name :database-interceptor
    :enter
          (fn [context]
-           (let [database (:database (:database (:components (:request context))))]
-             (update context :request assoc :database @database)))
+           (let [store (-> context :request :components :database :store)]
+             (update context :request assoc :store @store)))
    :leave
          (fn [context]
-           (let [database (:database (:database (:components (:request context))))]
+           (let [store (-> context :request :components :database :store)]
              (if-let [[op & args] (:tx-data context)]
                (do
-                 (apply swap! database op args)
-                 (assoc-in context [:request :database] @database))
+                 (apply swap! store op args)
+                 (assoc-in context [:request :store] @store))
                context)))})
 
-(defn list-todos [request]
-  (ok @(-> request :components :database :database)))
+
 
 (def routes
   (route/expand-routes
     #{["/todo" :post [db-interceptor list-create]]
-      ["/todo" :get [list-todos] :route-name :list-query-form]
-      ["/todo/:list-id" :get [entity-render db-interceptor list-view]]
+      ["/todo" :get [db-interceptor list-todos] :route-name :list-todos]
+
       ["/todo/:list-id" :post [entity-render list-item-view db-interceptor list-item-create]]
+      ["/todo/:list-id" :get [entity-render db-interceptor list-view]]
+
       ["/todo/:list-id/:item-id" :get [entity-render list-item-view db-interceptor]]
       ["/todo/:list-id/:item-id" :put echo :route-name :list-item-update]
       ["/todo/:list-id/:item-id" :delete echo :route-name :list-item-delete]
-      ["/test-1" :get [test-um test-dois]]
-      ["/test-3" :get [test-tres] :route-name :test-tres]}))
+
+      ["/version" :get [version handle-version] :route-name :test-tres]}))

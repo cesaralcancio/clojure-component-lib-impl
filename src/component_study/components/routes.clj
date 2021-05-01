@@ -10,7 +10,7 @@
     (assoc this :local-routes service/routes))
 
   (stop [this]
-    (println ";; Stopping ExampleComponent")
+    (println ";; Stopping Routes")
     this))
 
 (defn new-routes []

@@ -1,25 +1,27 @@
 (ns component-study.components
   (:require [com.stuartsierra.component :as component]
             [component-study.components.database :as database]
-            [component-study.components.example-component :as example-component]
-            [component-study.components.scheduler :as scheduler]
-            [clojure.pprint :as pp]
-            [io.pedestal.http :as http]
-            [io.pedestal.http.route :as route]
-            [io.pedestal.test :as test]
-            [io.pedestal.interceptor :as i]
             [component-study.components.pedestal :as component.pedestal]
-            [component-study.components.routes :as routes]))
+            [component-study.components.routes :as routes]
+            [component-study.components.config :as config]
+            [component-study.components.webapp :as webapp]))
 
-(defn example-system [config-options]
-  (let [{:keys [host port]} config-options]
-    (component/system-map
-      :scheduler (scheduler/new-scheduler)
-      :app (component/using (example-component/new-example-component config-options) [:database :scheduler])
+(defn base-system [env]
+  (component/system-map
+    :config (config/new-config env)
+    :database (database/new-database)
+    :routes (routes/new-routes)
+    :webapp (component/using (webapp/new-webapp) [:config :database :routes])
+    :pedestal (component/using (component.pedestal/new-pedestal) [:config :database :routes :webapp])))
 
-      :database (database/new-database)
-      :routes (routes/new-routes)
-      :pedestal (component/using (component.pedestal/new-pedestal) [:routes :database :app]))))
+(defn start-prod []
+  (let [system-return (component/start (base-system :prod))
+        start (-> system-return :pedestal :start)]
+    (start)))
 
-(def system (example-system {:host "localhost" :port 8080}))
-(defn main [] (component/start system))
+(defn start-dev []
+  (let [system-return (component/start (base-system :dev))
+        start-dev (-> system-return :pedestal :start-dev)
+        restart (-> system-return :pedestal :restart)]
+    (try (start-dev) (catch Exception e (try (restart) (catch Exception e (println "Error!" e)))))
+    system-return))

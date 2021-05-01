@@ -1,7 +1,7 @@
 (ns component-study.components.database
   (:require [com.stuartsierra.component :as component]))
 
-(defonce database (atom {}))
+(defonce store (atom {}))
 
 (defrecord Database []
   component/Lifecycle
@@ -9,7 +9,7 @@
   (start [component]
     (println ";; Starting database")
     (-> component
-        (assoc :database database)))
+        (assoc :store store)))
 
   (stop [component]
     (println ";; Stopping database")
